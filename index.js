@@ -548,7 +548,7 @@ app.get('*', (req, res) => {
 app.listen(PORT, async () => {
     console.log(`🌐 Server running at: http://localhost:${PORT}`);
     
-    // Auto-login existing sessions in directory
+    // 1. Auto-login existing sessions in local directory
     const sessionsBaseDir = path.join(__dirname, 'sessions');
     if (fs.existsSync(sessionsBaseDir)) {
         const folders = fs.readdirSync(sessionsBaseDir);
@@ -578,6 +578,43 @@ app.listen(PORT, async () => {
                     } catch (e) {}
                 }
             }
+        }
+    }
+
+    // 2. Auto-login existing sessions from MongoDB
+    const mongoUri = process.env.MONGO_URI;
+    if (mongoUri) {
+        try {
+            console.log(`📦 Scanning MongoDB for active sessions to auto-connect...`);
+            const { MongoClient } = require('mongodb');
+            const client = new MongoClient(mongoUri);
+            await client.connect();
+            const db = client.db('whatsapp_sessions');
+            const collections = await db.listCollections().toArray();
+            
+            for (const col of collections) {
+                if (col.name.startsWith('session_')) {
+                    const phone = col.name.replace('session_', '');
+                    
+                    // Check if the collection has 'creds' and if it is registered
+                    const credsDoc = await db.collection(col.name).findOne({ _id: 'creds' });
+                    let isRegistered = false;
+                    if (credsDoc && credsDoc.data) {
+                        try {
+                            const creds = JSON.parse(credsDoc.data);
+                            isRegistered = creds.registered === true;
+                        } catch (e) {}
+                    }
+                    
+                    if (isRegistered) {
+                        console.log(`📦 Auto-connecting saved MongoDB session for: ${phone}`);
+                        startSession(phone).catch(err => console.error(`Failed to auto-connect MongoDB session ${phone}:`, err));
+                    }
+                }
+            }
+            await client.close();
+        } catch (err) {
+            console.error('Failed to auto-connect MongoDB sessions on startup:', err.message);
         }
     }
 });

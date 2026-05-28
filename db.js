@@ -6,6 +6,7 @@ class JSONDatabase {
         this.filePath = path.join(__dirname, 'data', filename);
         this.data = {};
         this.init();
+        this.loadFromMongo();
     }
 
     init() {
@@ -14,7 +15,7 @@ class JSONDatabase {
             fs.mkdirSync(dir, { recursive: true });
         }
         if (!fs.existsSync(this.filePath)) {
-            this.save();
+            this.saveLocal();
         } else {
             try {
                 const content = fs.readFileSync(this.filePath, 'utf-8');
@@ -26,7 +27,35 @@ class JSONDatabase {
         }
     }
 
+    async loadFromMongo() {
+        const mongoUri = process.env.MONGO_URI;
+        if (!mongoUri) return;
+
+        try {
+            const { MongoClient } = require('mongodb');
+            const client = new MongoClient(mongoUri);
+            await client.connect();
+            const db = client.db('flex_bot_data');
+            const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
+            const collection = db.collection(colName);
+            const doc = await collection.findOne({ _id: 'main_data' });
+            if (doc && doc.data) {
+                const parsed = JSON.parse(doc.data);
+                this.data = { ...this.data, ...parsed };
+                this.saveLocal();
+            }
+            await client.close();
+        } catch (e) {
+            console.error(`[Mongo DB] Failed to load ${this.filePath}:`, e.message);
+        }
+    }
+
     save() {
+        this.saveLocal();
+        this.saveToMongo();
+    }
+
+    saveLocal() {
         try {
             const serialized = JSON.stringify(this.data, (key, value) => 
                 typeof value === 'bigint' ? value.toString() : value, 
@@ -34,6 +63,33 @@ class JSONDatabase {
             fs.writeFileSync(this.filePath, serialized, 'utf-8');
         } catch (error) {
             console.error(`Failed to save database: ${this.filePath}`, error);
+        }
+    }
+
+    async saveToMongo() {
+        const mongoUri = process.env.MONGO_URI;
+        if (!mongoUri) return;
+
+        try {
+            const { MongoClient } = require('mongodb');
+            const client = new MongoClient(mongoUri);
+            await client.connect();
+            const db = client.db('flex_bot_data');
+            const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
+            const collection = db.collection(colName);
+            
+            const serialized = JSON.stringify(this.data, (key, value) => 
+                typeof value === 'bigint' ? value.toString() : value
+            );
+
+            await collection.updateOne(
+                { _id: 'main_data' },
+                { $set: { data: serialized } },
+                { upsert: true }
+            );
+            await client.close();
+        } catch (e) {
+            console.error(`[Mongo DB] Failed to save ${this.filePath}:`, e.message);
         }
     }
 
