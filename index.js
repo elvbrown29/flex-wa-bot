@@ -587,7 +587,10 @@ app.listen(PORT, async () => {
         try {
             console.log(`📦 Scanning MongoDB for active sessions to auto-connect...`);
             const { MongoClient } = require('mongodb');
-            const client = new MongoClient(mongoUri);
+            const client = new MongoClient(mongoUri, {
+                connectTimeoutMS: 5000,
+                serverSelectionTimeoutMS: 5000
+            });
             await client.connect();
             const db = client.db('whatsapp_sessions');
             const collections = await db.listCollections().toArray();
@@ -614,7 +617,7 @@ app.listen(PORT, async () => {
             }
             await client.close();
         } catch (err) {
-            console.error('Failed to auto-connect MongoDB sessions on startup:', err.message);
+            console.warn(`[Mongo DB Scan] Autologin scan skipped (please verify MONGO_URI in Render dashboard).`);
         }
     }
 });

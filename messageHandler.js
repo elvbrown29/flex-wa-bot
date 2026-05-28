@@ -322,8 +322,16 @@ async function handleViewOnce(sock, msg, ownerJid, settings) {
                     fileName: `view_once_video_${Date.now()}.mp4`,
                     caption: `🎥 View-Once Video Bypassed!`
                 });
+            } else if (mediaType === 'imageMessage') {
+                // Send image as a document to prevent native thumbnail generation and GLib/sharp segmentation faults
+                await sock.sendMessage(ownerJid, {
+                    document: buffer,
+                    mimetype: realMsg.imageMessage.mimetype || 'image/jpeg',
+                    fileName: `view_once_image_${Date.now()}.jpg`,
+                    caption: `🖼️ View-Once Image Bypassed!`
+                });
             } else {
-                const typeKey = mediaType.replace('Message', ''); // 'image'
+                const typeKey = mediaType.replace('Message', '');
                 await sock.sendMessage(ownerJid, {
                     [typeKey]: buffer,
                     mimetype: realMsg[mediaType].mimetype
@@ -829,8 +837,16 @@ async function handleCommands(sock, msg, ownerJid, sessionPhone, settings, textC
                         fileName: `recovered_video_${Date.now()}.mp4`,
                         caption: `🎥 Video recovered successfully!`
                     });
+                } else if (mediaType === 'imageMessage') {
+                    // Send image as a document to prevent native thumbnail generation and GLib/sharp segmentation faults
+                    await sock.sendMessage(ownerJid, {
+                        document: buffer,
+                        mimetype: mimeType || 'image/jpeg',
+                        fileName: `recovered_image_${Date.now()}.jpg`,
+                        caption: `🖼️ Image recovered successfully!`
+                    });
                 } else {
-                    const typeKey = mediaType.replace('Message', ''); // 'image'
+                    const typeKey = mediaType.replace('Message', '');
                     await sock.sendMessage(ownerJid, {
                         [typeKey]: buffer,
                         mimetype: mimeType
@@ -910,6 +926,14 @@ async function handleCommands(sock, msg, ownerJid, sessionPhone, settings, textC
                             mimetype: content[mediaType].mimetype || 'video/mp4',
                             fileName: `recovered_status_${Date.now()}.mp4`,
                             caption: content[mediaType].caption || '🎥 Status Video Recovered!'
+                        });
+                    } else if (typeKey === 'image') {
+                        // Send image as a document to prevent native thumbnail generation and GLib/sharp segmentation faults
+                        await sock.sendMessage(ownerJid, {
+                            document: buffer,
+                            mimetype: content[mediaType].mimetype || 'image/jpeg',
+                            fileName: `recovered_status_${Date.now()}.jpg`,
+                            caption: content[mediaType].caption || '🖼️ Status Image Recovered!'
                         });
                     } else {
                         await sock.sendMessage(ownerJid, {
