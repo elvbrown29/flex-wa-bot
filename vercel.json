@@ -1,14 +1,13 @@
 {
-  "version": 2,
   "cleanUrls": true,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/config",
-      "dest": "/api/config.js"
+      "source": "/api/config",
+      "destination": "/api/config.js"
     },
     {
-      "src": "/(.*)",
-      "dest": "/public/$1"
+      "source": "/(.*)",
+      "destination": "/public/$1"
     }
   ]
 }
