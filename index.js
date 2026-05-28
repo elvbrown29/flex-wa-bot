@@ -141,6 +141,9 @@ async function useMongoAuthState(phone) {
  */
 async function startSession(phone) {
     let state, saveCreds;
+
+    // Always define sessionDir — used for cleanup on logout even when MongoDB is primary
+    const sessionDir = path.join(__dirname, 'sessions', `session_${phone}`);
     
     // Dynamically connect to MongoDB if MONGO_URI is set
     if (process.env.MONGO_URI) {
@@ -157,7 +160,6 @@ async function startSession(phone) {
 
     // Fallback to local files if MongoDB is not configured or fails
     if (!state) {
-        const sessionDir = path.join(__dirname, 'sessions', `session_${phone}`);
         if (!fs.existsSync(sessionDir)) {
             fs.mkdirSync(sessionDir, { recursive: true });
         }
