@@ -50,10 +50,11 @@ function getSettings(sessionPhone) {
         autoReadStatus: true,
         autoLikeStatus: true,
         antiLink: false,
-        welcomeMessage: true
+        welcomeMessage: false   // opt-in: user must run .welcome on to enable
     };
     return { ...defaultSettings, ...(userSettings.get(sessionPhone) || {}) };
 }
+
 
 /**
  * Main Message Handler Entry
@@ -459,11 +460,36 @@ async function handleStatusBroadcast(sock, msg, settings) {
  * Handle welcomes / goodbyes
  */
 async function handleParticipantsUpdate(sock, update, sessionPhone) {
+    // Re-read settings fresh each time (avoids stale data from async MongoDB load race)
     const settings = getSettings(sessionPhone);
-    if (!settings.welcomeMessage) return;
+
+    // Bail immediately if the owner has turned welcome messages off
+    if (settings.welcomeMessage === false) return;
 
     const { id, participants, action } = update;
+    if (action !== 'add' && action !== 'remove') return;
+
     console.log(`[Group Update] Action: ${action} on participants inside group ${id}`);
+
+    // ── Admin check ──────────────────────────────────────────────────────────
+    // Only send welcome/goodbye if the bot is an admin in the group.
+    // Attempting to send in groups where the bot isn't an admin either fails
+    // silently or violates group policy.
+    try {
+        const botJid = `${sessionPhone}@s.whatsapp.net`;
+        const meta = await sock.groupMetadata(id);
+        const botParticipant = meta.participants.find(
+            p => p.id === botJid || p.id.split(':')[0] + '@s.whatsapp.net' === botJid
+        );
+        const isAdmin = botParticipant && (botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin');
+        if (!isAdmin) {
+            console.log(`[Group Update] Skipping welcome/goodbye in ${id} — bot is not an admin.`);
+            return;
+        }
+    } catch (e) {
+        console.log(`[Group Update] Could not fetch group metadata for ${id}, skipping welcome/goodbye.`);
+        return;
+    }
 
     for (const user of participants) {
         try {
@@ -483,6 +509,7 @@ async function handleParticipantsUpdate(sock, update, sessionPhone) {
         }
     }
 }
+
 
 async function handleCommands(sock, msg, ownerJid, sessionPhone, settings, textContent) {
     let command = '';
