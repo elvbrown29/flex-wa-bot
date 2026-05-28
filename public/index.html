@@ -387,7 +387,6 @@
                 const data = await res.json();
                 if (data.backendUrl) {
                     backendUrl = data.backendUrl;
-                    console.log('🔗 Connected securely to backend server:', backendUrl);
                 }
             } catch (err) {
                 console.warn('Config fetch failed, using local/relative origin fallback.');
