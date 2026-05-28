@@ -44,17 +44,128 @@ const sessions = new Map();
 const logger = pino({ level: 'silent' });
 
 /**
+ * Custom MongoDB-backed authentication state provider for Baileys.
+ * Allows hosting on ephemeral environments (Render/Vercel) without session loss.
+ */
+async function useMongoAuthState(phone) {
+    const mongoUri = process.env.MONGO_URI;
+    if (!mongoUri) return null;
+
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(mongoUri);
+    await client.connect();
+    const db = client.db('whatsapp_sessions');
+    const collection = db.collection(`session_${phone}`);
+
+    const readData = async (id) => {
+        try {
+            const doc = await collection.findOne({ _id: id });
+            if (doc && doc.data) {
+                return JSON.parse(doc.data, (key, value) => {
+                    if (value && typeof value === 'object' && value.type === 'Buffer') {
+                        return Buffer.from(value.data);
+                    }
+                    return value;
+                });
+            }
+        } catch (e) {
+            console.error('[MongoAuth] Failed to read key:', id, e.message);
+        }
+        return null;
+    };
+
+    const writeData = async (id, value) => {
+        try {
+            if (value === null || value === undefined) {
+                await collection.deleteOne({ _id: id });
+            } else {
+                const serialized = JSON.stringify(value, (key, val) => {
+                    if (Buffer.isBuffer(val)) {
+                        return { type: 'Buffer', data: val.toJSON().data };
+                    }
+                    return val;
+                });
+                await collection.updateOne(
+                    { _id: id },
+                    { $set: { data: serialized } },
+                    { upsert: true }
+                );
+            }
+        } catch (e) {
+            console.error('[MongoAuth] Failed to write key:', id, e.message);
+        }
+    };
+
+    // Initialize credentials
+    let creds = await readData('creds');
+    if (!creds) {
+        const { initAuthCreds } = require('@whiskeysockets/baileys');
+        creds = initAuthCreds();
+        await writeData('creds', creds);
+    }
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(
+                        ids.map(async (id) => {
+                            let value = await readData(`${type}-${id}`);
+                            data[id] = value;
+                        })
+                    );
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category of Object.keys(data)) {
+                        for (const id of Object.keys(data[category])) {
+                            const value = data[category][id];
+                            tasks.push(writeData(`${category}-${id}`, value));
+                        }
+                    }
+                    await Promise.all(tasks);
+                }
+            }
+        },
+        saveCreds: async () => {
+            await writeData('creds', creds);
+        }
+    };
+}
+
+/**
  * Initialize a new WhatsApp connection for a specific phone number
  */
 async function startSession(phone) {
-    const sessionDir = path.join(__dirname, 'sessions', `session_${phone}`);
+    let state, saveCreds;
     
-    // Ensure sessions folder structure exists
-    if (!fs.existsSync(sessionDir)) {
-        fs.mkdirSync(sessionDir, { recursive: true });
+    // Dynamically connect to MongoDB if MONGO_URI is set
+    if (process.env.MONGO_URI) {
+        try {
+            console.log(`[Session Manager] Connecting to MongoDB for phone: ${phone}...`);
+            const mongoAuth = await useMongoAuthState(phone);
+            state = mongoAuth.state;
+            saveCreds = mongoAuth.saveCreds;
+            console.log(`[Session Manager] MongoDB Connection successful for phone: ${phone}!`);
+        } catch (e) {
+            console.error(`[Session Manager] MongoDB Connection failed, falling back to local files:`, e.message);
+        }
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    // Fallback to local files if MongoDB is not configured or fails
+    if (!state) {
+        const sessionDir = path.join(__dirname, 'sessions', `session_${phone}`);
+        if (!fs.existsSync(sessionDir)) {
+            fs.mkdirSync(sessionDir, { recursive: true });
+        }
+        const diskAuth = await useMultiFileAuthState(sessionDir);
+        state = diskAuth.state;
+        saveCreds = diskAuth.saveCreds;
+    }
+
     const { fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
     const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
 
