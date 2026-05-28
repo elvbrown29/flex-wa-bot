@@ -35,7 +35,7 @@ class JSONDatabase {
             const { MongoClient } = require('mongodb');
             const client = new MongoClient(mongoUri);
             await client.connect();
-            const db = client.db('flex_bot_data');
+            const db = client.db('whatsapp_sessions');
             const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
             const collection = db.collection(colName);
             const doc = await collection.findOne({ _id: 'main_data' });
@@ -74,7 +74,7 @@ class JSONDatabase {
             const { MongoClient } = require('mongodb');
             const client = new MongoClient(mongoUri);
             await client.connect();
-            const db = client.db('flex_bot_data');
+            const db = client.db('whatsapp_sessions');
             const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
             const collection = db.collection(colName);
             
