@@ -11,8 +11,7 @@ services:
         sync: false
         placeholder: "Your WhatsApp number (e.g. 233599672113)"
       - key: MONGO_URI
-        sync: false
-        placeholder: "Your MongoDB Atlas connection URI"
+        value: "mongodb+srv://elvbrown29_db_user:nB31mkH6odd0PJx@flex-wa-bot.f2ttfwj.mongodb.net/whatsapp_sessions?appName=flex-wa-bot"
       - key: ADMIN_PASSWORD
         sync: false
         value: "flexadmin123"
