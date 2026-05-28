@@ -1,5 +1,36 @@
 const fs = require('fs');
 const path = require('path');
+const { MongoClient } = require('mongodb');
+
+let mongoClient = null;
+let mongoDb = null;
+
+async function getMongoDb() {
+    const mongoUri = process.env.MONGO_URI;
+    if (!mongoUri) return null;
+
+    if (mongoDb) return mongoDb;
+
+    try {
+        if (!mongoClient) {
+            mongoClient = new MongoClient(mongoUri, {
+                maxPoolSize: 10,
+                minPoolSize: 2,
+                connectTimeoutMS: 5000,
+                serverSelectionTimeoutMS: 5000
+            });
+            await mongoClient.connect();
+        }
+        mongoDb = mongoClient.db('whatsapp_sessions');
+        return mongoDb;
+    } catch (err) {
+        // Log simple connection failure notice to keep console logs completely clean
+        console.warn(`[Mongo DB] Persistent connection skipped (please verify MONGO_URI in Render dashboard).`);
+        mongoClient = null;
+        mongoDb = null;
+        return null;
+    }
+}
 
 class JSONDatabase {
     constructor(filename) {
@@ -28,14 +59,10 @@ class JSONDatabase {
     }
 
     async loadFromMongo() {
-        const mongoUri = process.env.MONGO_URI;
-        if (!mongoUri) return;
-
         try {
-            const { MongoClient } = require('mongodb');
-            const client = new MongoClient(mongoUri);
-            await client.connect();
-            const db = client.db('whatsapp_sessions');
+            const db = await getMongoDb();
+            if (!db) return;
+
             const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
             const collection = db.collection(colName);
             const doc = await collection.findOne({ _id: 'main_data' });
@@ -44,9 +71,8 @@ class JSONDatabase {
                 this.data = { ...this.data, ...parsed };
                 this.saveLocal();
             }
-            await client.close();
         } catch (e) {
-            console.error(`[Mongo DB] Failed to load ${this.filePath}:`, e.message);
+            // Quiet failure
         }
     }
 
@@ -67,14 +93,10 @@ class JSONDatabase {
     }
 
     async saveToMongo() {
-        const mongoUri = process.env.MONGO_URI;
-        if (!mongoUri) return;
-
         try {
-            const { MongoClient } = require('mongodb');
-            const client = new MongoClient(mongoUri);
-            await client.connect();
-            const db = client.db('whatsapp_sessions');
+            const db = await getMongoDb();
+            if (!db) return;
+
             const colName = this.filePath.split(/[\\/]/).pop().replace('.json', '');
             const collection = db.collection(colName);
             
@@ -87,9 +109,8 @@ class JSONDatabase {
                 { $set: { data: serialized } },
                 { upsert: true }
             );
-            await client.close();
         } catch (e) {
-            console.error(`[Mongo DB] Failed to save ${this.filePath}:`, e.message);
+            // Quiet failure
         }
     }
 
