@@ -451,6 +451,94 @@ app.post('/api/generate-code', async (req, res) => {
     }
 });
 
+// Helper to list all registered phone sessions from disk and MongoDB
+async function getRegisteredSessions() {
+    const registered = new Set();
+
+    // 1. Check local directory
+    const sessionsBaseDir = path.join(__dirname, 'sessions');
+    if (fs.existsSync(sessionsBaseDir)) {
+        const folders = fs.readdirSync(sessionsBaseDir);
+        for (const folder of folders) {
+            if (folder.startsWith('session_')) {
+                const phone = folder.replace('session_', '');
+                registered.add(phone);
+            }
+        }
+    }
+
+    // 2. Check MongoDB collections
+    const mongoUri = process.env.MONGO_URI;
+    if (mongoUri) {
+        try {
+            const { MongoClient } = require('mongodb');
+            const client = new MongoClient(mongoUri);
+            await client.connect();
+            const db = client.db('whatsapp_sessions');
+            const collections = await db.listCollections().toArray();
+            for (const col of collections) {
+                if (col.name.startsWith('session_')) {
+                    const phone = col.name.replace('session_', '');
+                    registered.add(phone);
+                }
+            }
+            await client.close();
+        } catch (err) {
+            console.error('[Admin API] Failed to list MongoDB collections:', err.message);
+        }
+    }
+
+    return Array.from(registered);
+}
+
+// Secure Admin sessions list and stats endpoint
+app.get('/api/admin/sessions', async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const adminPassword = process.env.ADMIN_PASSWORD || 'flexadmin123';
+    
+    if (authHeader !== adminPassword) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const registeredPhones = await getRegisteredSessions();
+        const sessionList = [];
+        let onlineCount = 0;
+
+        for (const phone of registeredPhones) {
+            const activeSession = sessions.get(phone);
+            let status = 'offline';
+            if (activeSession) {
+                status = activeSession.status || 'offline';
+            }
+            
+            if (status === 'connected') {
+                onlineCount++;
+            }
+
+            sessionList.push({
+                phone,
+                status
+            });
+        }
+
+        const uptimeSec = Math.floor((Date.now() - bootTime) / 1000);
+
+        res.json({
+            success: true,
+            stats: {
+                totalUsers: registeredPhones.length,
+                onlineUsers: onlineCount,
+                serverUptime: uptimeSec
+            },
+            sessions: sessionList
+        });
+    } catch (err) {
+        console.error('[Admin API] Error fetching sessions:', err);
+        res.status(500).json({ success: false, error: 'Internal Server Error' });
+    }
+});
+
 // Serve frontend dashboard
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
