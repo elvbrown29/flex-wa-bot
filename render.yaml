@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: flex-wa-bot-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OWNER_NUMBER
+        sync: false
+        placeholder: "Your WhatsApp number (e.g. 233599672113)"
+      - key: MONGO_URI
+        sync: false
+        placeholder: "Your MongoDB Atlas connection URI"
+      - key: ADMIN_PASSWORD
+        sync: false
+        value: "flexadmin123"
+      - key: COMMAND_PREFIX
+        value: "."
+      - key: AUTO_SAVE_VIEW_ONCE
+        value: "false"
+      - key: AUTO_RECOVER_DELETED
+        value: "true"
