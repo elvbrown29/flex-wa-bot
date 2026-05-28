@@ -300,6 +300,24 @@
             100% { transform: rotate(360deg); }
         }
 
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.25s;
+        }
+
+        .tab-btn.active {
+            background-color: var(--border-green);
+            color: var(--accent-green);
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.1);
+        }
+
         .footer {
             margin-top: 30px;
             color: #4b5563;
@@ -323,6 +341,11 @@
             <div class="logo">🚀</div>
             <h1>Flex <span>WA Bot</span></h1>
             <p class="subtitle">Built on Mastery</p>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 10px; margin-top: -15px; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
+            <button id="tabLinker" class="tab-btn active" onclick="switchTab('linker')">📱 Link Bot</button>
+            <button id="tabBYOB" class="tab-btn" onclick="switchTab('byob')">🚀 Private Deploy</button>
         </div>
 
         <form id="pairingForm" onsubmit="generateCode(event)">
@@ -351,6 +374,37 @@
                     <li>Enter the 8-digit pairing code shown above.</li>
                 </ol>
             </div>
+        </div>
+
+        <!-- BYOB View -->
+        <div id="byobView" style="display: none; text-align: left; animation: fadeIn 0.4s ease-out forwards;">
+            <p style="font-weight: 700; color: #fff; margin-bottom: 15px; font-size: 1rem;">🚀 Deploy a Private Bot to Your Render Account</p>
+            
+            <div class="instructions" style="margin-top: 0; font-size: 0.85rem;">
+                <ol style="padding-left: 18px; line-height: 1.6;">
+                    <li style="margin-bottom: 10px;">
+                        <b>Fork the Code:</b> Go to the <a href="https://github.com/elvbrown29/flex-wa-bot" target="_blank" style="color: var(--accent-green); text-decoration: none; font-weight: 600;">GitHub Repository</a> and Fork it to your account.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        <b>Create Blueprint:</b> Log into <a href="https://dashboard.render.com" target="_blank" style="color: var(--accent-green); text-decoration: none; font-weight: 600;">Render</a>, click <b>New +</b>, and select <b>Blueprint</b>.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        <b>Deploy:</b> Connect your forked repository. Render will automatically pre-configure the central MongoDB database! Enter your phone number in the <b>OWNER_NUMBER</b> field during setup.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        <b>Bring Your Own Backend:</b> Once deployed, copy your Render web service URL and paste it below:
+                    </li>
+                </ol>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="customBackend">Your Private Render URL</label>
+                <input type="text" id="customBackend" placeholder="https://my-flex-bot.onrender.com">
+                <p class="help-text">Leave blank to use the default central server.</p>
+            </div>
+            <button class="btn" onclick="saveCustomBackend()" style="padding: 12px; font-size: 0.9rem;">
+                💾 Save Private Server
+            </button>
         </div>
 
         <div class="footer">
@@ -384,17 +438,52 @@
 
         // Fetch secure config from Vercel Serverless Function on load
         async function loadConfig() {
-            try {
-                const res = await fetch('/api/config');
-                const data = await res.json();
-                if (data.backendUrl) {
-                    backendUrl = data.backendUrl;
+            const customUrl = localStorage.getItem('custom_backend_url');
+            if (customUrl) {
+                backendUrl = customUrl;
+                document.getElementById('customBackend').value = customUrl;
+            } else {
+                try {
+                    const res = await fetch('/api/config');
+                    const data = await res.json();
+                    if (data.backendUrl) {
+                        backendUrl = data.backendUrl;
+                    }
+                } catch (err) {
+                    console.warn('Config fetch failed, using local/relative origin fallback.');
                 }
-            } catch (err) {
-                console.warn('Config fetch failed, using local/relative origin fallback.');
             }
             // Start checking status once config is resolved
             if (activePhone) checkStatus();
+        }
+
+        function saveCustomBackend() {
+            const url = document.getElementById('customBackend').value.trim();
+            if (url) {
+                localStorage.setItem('custom_backend_url', url);
+            } else {
+                localStorage.removeItem('custom_backend_url');
+            }
+            alert('Custom backend URL saved! Reloading connection...');
+            window.location.reload();
+        }
+
+        function switchTab(tab) {
+            if (tab === 'linker') {
+                document.getElementById('tabLinker').className = 'tab-btn active';
+                document.getElementById('tabBYOB').className = 'tab-btn';
+                document.getElementById('pairingForm').style.display = 'block';
+                document.getElementById('byobView').style.display = 'none';
+                if (pairingCodeEl.textContent !== '---- ----') {
+                    document.getElementById('codeContainer').style.display = 'block';
+                }
+            } else {
+                document.getElementById('tabLinker').className = 'tab-btn';
+                document.getElementById('tabBYOB').className = 'tab-btn active';
+                document.getElementById('pairingForm').style.display = 'none';
+                document.getElementById('codeContainer').style.display = 'none';
+                document.getElementById('byobView').style.display = 'block';
+            }
         }
 
         // Check connection status periodically
